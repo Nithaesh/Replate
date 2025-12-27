@@ -554,7 +554,7 @@ class RePlateApp:
         """Display donor dashboard page"""
         self.page.clean()
         
-        # --- MERGED CODE START ---
+        # --- Top Bar ---
         top_bar = ft.Container(
             content=ft.Row(
                 controls=[
@@ -566,8 +566,8 @@ class RePlateApp:
                             width=40,
                             height=40,
                         ),
-                    style=ft.ButtonStyle(shape=ft.CircleBorder()),
-                    on_click=lambda _: print("Sidebar clicked"),
+                        style=ft.ButtonStyle(shape=ft.CircleBorder()),
+                        on_click=lambda _: print("Sidebar clicked"),
                     ),
                     # App title + logo
                     ft.Row(
@@ -576,8 +576,7 @@ class RePlateApp:
                                 src="logo.png",
                                 width=40,
                                 height=40,
-                            )
-,
+                            ),
                             ft.Image(
                                 src="name.png",
                                 width=160,
@@ -586,14 +585,13 @@ class RePlateApp:
                         ],
                         spacing=4,
                     ),
-
                     # Profile + notification buttons
                     ft.Row(
                         controls=[
                             # Notification button
                             ft.ElevatedButton(
                                 content=ft.Container(
-                                    content=ft.Text(self.current_user[0], size=25, color="#2ECC71"),
+                                    content=ft.Text(self.current_user[0] if self.current_user else "U", size=25, color="#2ECC71"),
                                     alignment=ft.alignment.Alignment(0, 0),
                                     width=40,
                                     height=40,
@@ -609,7 +607,6 @@ class RePlateApp:
             ),
             padding=ft.padding.only(left=15, right=15, top=10, bottom=10),
         )
-        # --- MERGED CODE END ---
         
         welcome_text = ft.Container(
             content=ft.Column(
@@ -627,8 +624,9 @@ class RePlateApp:
                     ),
                 ],
                 spacing=5,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             ),
-            padding=ft.padding.only(left=30, top=30, bottom=20),
+            padding=ft.padding.only(top=30, bottom=20),
         )
         
         # First card row - Create New Donation & Donation History
@@ -692,13 +690,13 @@ class RePlateApp:
                         on_click=lambda _: print("Donation History clicked"),
                     ),
                 ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=15,
             ),
-            padding=ft.padding.symmetric(horizontal=30),
             margin=ft.margin.only(top=20),
         )
         
-        # Second card row - View Donation Status & Donation History
+        # Second card row - View Donation Status & View Dashboard
         second_card = ft.Container(
             content=ft.Row(
                 controls=[
@@ -759,9 +757,9 @@ class RePlateApp:
                         on_click=lambda _: print("Donation History clicked"),
                     ),
                 ],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=15,
             ),
-            padding=ft.padding.symmetric(horizontal=30),
             margin=ft.margin.only(top=20),
         )
         
@@ -776,7 +774,7 @@ class RePlateApp:
             bgcolor=WHITE,
             border_radius=25,
             padding=ft.padding.only(left=10, right=10, top=5, bottom=5),
-            margin=ft.margin.symmetric(horizontal=25),
+            width=350,
         )
         
         rewards_badges_row = ft.Row(
@@ -785,12 +783,12 @@ class RePlateApp:
                     content=ft.Column(
                         controls=[
                             ft.Container(
-                                    content=ft.Image(
-                                        src="rewards_icon.png",
-                                        width=48,
-                                        height=58,
-                                    ),
+                                content=ft.Image(
+                                    src="rewards_icon.png",
+                                    width=48,
+                                    height=58,
                                 ),
+                            ),
                             ft.Text(
                                 value="Rewards",
                                 size=14,
@@ -811,12 +809,12 @@ class RePlateApp:
                     content=ft.Column(
                         controls=[
                             ft.Container(
-                                    content=ft.Image(
-                                        src="badges_icon.png",
-                                        width=48,
-                                        height=58,
-                                    ),
+                                content=ft.Image(
+                                    src="badges_icon.png",
+                                    width=48,
+                                    height=58,
                                 ),
+                            ),
                             ft.Text(
                                 value="Badges",
                                 size=14,
@@ -840,15 +838,16 @@ class RePlateApp:
         
         guidelines_button = ft.Container(
             height=60,
+            width=350,
             content=ft.Row(
                 controls=[
                     ft.Container(
-                                    content=ft.Image(
-                                        src="guidelines_icon.png",
-                                        width=40,
-                                        height=40,
-                                    ),
-                                ),
+                        content=ft.Image(
+                            src="guidelines_icon.png",
+                            width=40,
+                            height=40,
+                        ),
+                    ),
                     ft.Text(
                         value="Guidelines",
                         size=17,
@@ -861,7 +860,6 @@ class RePlateApp:
             bgcolor=WHITE,
             border_radius=15,
             padding=ft.padding.symmetric(horizontal=20, vertical=10),
-            margin=ft.margin.symmetric(horizontal=25),
             on_click=lambda _: print("Guidelines clicked"),
         )
 
@@ -876,8 +874,8 @@ class RePlateApp:
                             ft.Text("Your Ads Privacy Choices", size=11, color="#4a5c4a"),
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
-                        run_alignment=ft.MainAxisAlignment.CENTER, # Centers items when they wrap to next line
-                        wrap=True, # Allows text to move to next line on small screens
+                        run_alignment=ft.MainAxisAlignment.CENTER,
+                        wrap=True,
                         spacing=15,
                         run_spacing=5,
                     ),
@@ -915,6 +913,7 @@ class RePlateApp:
             spacing=0,
             scroll=ft.ScrollMode.ADAPTIVE,
             expand=True,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         )
         
         dashboard_container = ft.Container(
