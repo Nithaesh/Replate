@@ -1,0 +1,331 @@
+/* ========================
+   1. LAYOUT & ANIMATIONS
+   ======================== */
+.dashboard-container {
+  display: flex;
+  height: 100vh;
+  background-color: #0a0a0a;
+  color: white;
+  font-family: 'Outfit', sans-serif;
+  overflow: hidden;
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.fade-in { animation: fadeIn 0.4s ease-in-out; }
+.slide-up { animation: slideUp 0.4s ease-out; }
+
+/* ========================
+   2. LEFT SIDEBAR
+   ======================== */
+.dashboard-sidebar {
+  width: 240px;
+  background: #111;
+  border-right: 1px solid #222;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.sidebar-logo { font-size: 1.5rem; font-weight: 800; margin-bottom: 3rem; color: white; }
+.dot { color: #00e599; }
+
+.nav-item {
+  background: transparent;
+  border: none;
+  color: #888;
+  width: 100%;
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.nav-item:hover { background: rgba(255,255,255,0.05); color: white; }
+.nav-item.active { background: rgba(0,229,153,0.1); color: #00e599; font-weight: 600; }
+.logout-btn { margin-top: auto; background: transparent; border: 1px solid #333; color: #666; padding: 0.8rem; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; }
+.logout-btn:hover { border-color: #f43f5e; color: #f43f5e; }
+
+/* ========================
+   3. MAIN CONTENT
+   ======================== */
+.dashboard-content {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+.content-header h1 { font-size: 1.8rem; margin: 0; }
+.subtitle { color: #666; font-size: 0.9rem; margin-top: 5px; }
+.user-pill { display: flex; align-items: center; gap: 10px; background: #1a1a1a; padding: 8px 16px; border-radius: 50px; border: 1px solid #333; }
+
+/* --- NEON GLOW STATS CARDS --- */
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-bottom: 2rem; }
+
+.stat-card { 
+  background: #161616; 
+  border: 1px solid #222; 
+  padding: 1.5rem; 
+  border-radius: 16px; 
+  display: flex; 
+  align-items: center; 
+  gap: 1rem; 
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Hover Effect: Lift and Glow */
+.stat-card:hover { 
+  transform: translateY(-5px); 
+  background: #1a1a1a;
+}
+
+/* Specific Color Glows */
+.stat-card.glow-green { border-bottom: 3px solid #00e599; }
+.stat-card.glow-green:hover { box-shadow: 0 10px 30px -10px rgba(0, 229, 153, 0.3); border-color: #00e599; }
+
+.stat-card.glow-gold { border-bottom: 3px solid #f59e0b; }
+.stat-card.glow-gold:hover { box-shadow: 0 10px 30px -10px rgba(245, 158, 11, 0.3); border-color: #f59e0b; }
+
+.stat-card.glow-purple { border-bottom: 3px solid #8b5cf6; }
+.stat-card.glow-purple:hover { box-shadow: 0 10px 30px -10px rgba(139, 92, 246, 0.3); border-color: #8b5cf6; }
+
+.icon-box { width: 45px; height: 45px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+.icon-box.green { background: rgba(0,229,153,0.1); color: #00e599; }
+.icon-box.gold { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.icon-box.purple { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
+
+/* --- ACTIVE TRACKER CARD --- */
+.active-tracker-card {
+  background: #161616;
+  border-radius: 16px;
+  border: 1px solid #00e599;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 0 20px rgba(0,229,153,0.1);
+}
+
+/* Tracker Styles */
+.tracker-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+.pulse-dot { width: 8px; height: 8px; background: #00e599; border-radius: 50%; display: inline-block; margin-right: 8px; box-shadow: 0 0 10px #00e599; animation: pulse 2s infinite; }
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+.progress-track { display: flex; justify-content: space-between; position: relative; padding: 0 10px; }
+.progress-track::before { content: ''; position: absolute; top: 14px; left: 20px; right: 20px; height: 2px; background: #333; z-index: 0; }
+.step { position: relative; z-index: 1; text-align: center; opacity: 0.4; transition: 0.3s; }
+.step.active, .step.completed { opacity: 1; }
+.step-dot { width: 30px; height: 30px; background: #222; border: 2px solid #444; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px auto; color: white; background: #111; }
+.step.completed .step-dot { background: #00e599; border-color: #00e599; color: black; }
+.step.active .step-dot { border-color: #00e599; color: #00e599; box-shadow: 0 0 15px rgba(0,229,153,0.2); }
+
+/* --- MAP & DISCOVERY SECTION --- */
+.map-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #161616;
+  border-radius: 20px;
+  border: 1px solid #222;
+  overflow: hidden;
+  min-height: 400px;
+}
+
+.map-header-bar {
+  padding: 1rem 1.5rem;
+  background: #1a1a1a;
+  border-bottom: 1px solid #222;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.general-donate-btn {
+  background: #00e599;
+  color: black;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 30px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: 0.2s;
+}
+.general-donate-btn:hover { transform: scale(1.05); box-shadow: 0 0 15px rgba(0,229,153,0.4); }
+
+.map-container-wrapper { flex: 1; background: #0d0d0d; position: relative; }
+.leaflet-container { width: 100%; height: 100%; background: #0a0a0a !important; }
+
+/* ========================
+   4. RIGHT SIDEBAR (NEARBY NGOS)
+   ======================== */
+.right-sidebar {
+  width: 320px;
+  background: #111;
+  border-left: 1px solid #222;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.right-sidebar h3 { font-size: 1.1rem; margin-bottom: 1.5rem; color: #f59e0b; display: flex; align-items: center; gap: 8px; }
+
+.ngo-card {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  padding: 1rem;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  cursor: pointer;
+  transition: 0.2s;
+  position: relative;
+}
+.ngo-card:hover { border-color: #00e599; background: #222; transform: translateX(-5px); }
+
+.distance-tag {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #333;
+  color: #ccc;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.donate-btn-mini {
+  width: 100%;
+  background: transparent;
+  border: 1px solid #00e599;
+  color: #00e599;
+  padding: 8px;
+  border-radius: 6px;
+  margin-top: 10px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.donate-btn-mini:hover { background: #00e599; color: black; }
+
+/* ========================
+   5. CHAT SYSTEM
+   ======================== */
+.chat-window { position: absolute; bottom: 20px; right: 20px; width: 320px; height: 400px; background: #1a1a1a; border: 1px solid #333; border-radius: 16px; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.5); z-index: 1000; overflow: hidden; }
+.chat-header { background: #222; padding: 12px 15px; font-weight: bold; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+.chat-messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.chat-bubble { max-width: 80%; padding: 8px 12px; border-radius: 12px; font-size: 0.9rem; line-height: 1.4; }
+.chat-bubble.mine { align-self: flex-end; background: #00e599; color: black; border-bottom-right-radius: 2px; }
+.chat-bubble.theirs { align-self: flex-start; background: #333; color: white; border-bottom-left-radius: 2px; }
+.chat-input-area { display: flex; border-top: 1px solid #333; padding: 10px; background: #222; }
+.chat-input-area input { flex: 1; background: transparent; border: none; color: white; outline: none; padding: 5px; }
+.chat-send-btn { background: #00e599; border: none; width: 35px; height: 35px; border-radius: 50%; color: black; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+/* HISTORY */
+.history-list { display: flex; flex-direction: column; gap: 1rem; }
+.history-item { background: #161616; padding: 1.5rem; border-radius: 12px; border: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
+.status-badge { padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; text-transform: uppercase; }
+.status-badge.delivered { background: rgba(0,229,153,0.1); color: #00e599; }
+.status-badge.cancelled { background: rgba(244, 63, 94, 0.1); color: #f43f5e; }
+
+/* MODAL */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 2000; display: flex; justify-content: center; align-items: center; }
+.modal-content { background: #161616; width: 400px; padding: 2rem; border-radius: 20px; border: 1px solid #333; }
+.styled-input { width: 100%; background: #0a0a0a; border: 1px solid #333; padding: 12px; border-radius: 8px; color: white; margin-top: 5px; }
+.auth-btn { width: 100%; background: #00e599; border: none; padding: 12px; border-radius: 8px; color: black; font-weight: bold; cursor: pointer; margin-top: 1rem; }
+/* ========================
+   7. NGO SPECIFIC STYLES
+   ======================== */
+.feed-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.request-card {
+  background: #161616;
+  border: 1px solid #333;
+  padding: 1.5rem;
+  border-radius: 16px;
+  transition: 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+}
+
+.request-card:hover {
+  border-color: #00e599;
+  transform: translateY(-3px);
+  background: #1a1a1a;
+}
+
+.request-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.request-badges {
+  display: flex;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.badge {
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: #222;
+  color: #ccc;
+}
+.badge.food { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.badge.dist { background: rgba(0, 229, 153, 0.1); color: #00e599; }
+
+.accept-btn {
+  width: 100%;
+  background: #00e599;
+  color: black;
+  border: none;
+  padding: 12px;
+  border-radius: 10px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: 0.2s;
+}
+
+.accept-btn:hover {
+  transform: scale(1.02);
+  box-shadow: 0 0 15px rgba(0, 229, 153, 0.3);
+}
+
+.status-pill {
+  padding: 6px 12px;
+  border-radius: 30px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+.status-pill.pending { background: #333; color: #ccc; }
+.status-pill.assigned { background: rgba(0,229,153,0.2); color: #00e599; border: 1px solid #00e599; }
