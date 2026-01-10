@@ -1,266 +1,179 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { db } from '../../firebase';
-import { 
-  collection, query, where, onSnapshot, orderBy, updateDoc, doc, getDoc, addDoc, serverTimestamp 
-} from 'firebase/firestore';
-import { useNavigate, Navigate } from 'react-router-dom';
-import { 
-  FaLeaf, FaHistory, FaSignOutAlt, FaUserCircle, FaMapMarkedAlt, FaCheck, FaTimes, FaLock, 
-  FaUtensils, FaMapMarkerAlt, FaCommentDots, FaPaperPlane 
-} from 'react-icons/fa';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { collection, query, where, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
-import '../Dashboard/Dashboard.css'; // Reusing the shared CSS
-
-// --- ICONS ---
-import iconShadow from 'leaflet/dist/images/marker-icon.png';
-// Red Icon for Pending Donations
-const redIcon = new L.Icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34] });
-// Green Icon for Accepted Tasks
-const greenIcon = new L.Icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png', shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34] });
-
-// Helper: Calculate Distance
-const calculateDistance = (lat1, lon1, lat2, lon2) => {
-  if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
-  const R = 6371; 
-  const dLat = (lat2-lat1) * (Math.PI/180);
-  const dLon = (lon2-lon1) * (Math.PI/180);
-  const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*(Math.PI/180))*Math.cos(lat2*(Math.PI/180)) * Math.sin(dLon/2)*Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-  return (R * c).toFixed(1);
-};
+import { FaBoxOpen, FaTruck, FaMapMarkerAlt, FaPaperPlane, FaUserCircle, FaSignOutAlt, FaExclamationTriangle, FaHistory, FaGlobe } from 'react-icons/fa';
+import '../Dashboard/Dashboard.css'; 
 
 const NGODashboard = () => {
-  const { user, dbUser, logout } = useAuth();
+  const { user, dbUser, logout, loading } = useAuth();
   const navigate = useNavigate();
-
-  // State
-  const [currentView, setCurrentView] = useState('overview');
-  const [availableRequests, setAvailableRequests] = useState([]);
-  const [myTasks, setMyTasks] = useState([]);
+  
+  const [requests, setRequests] = useState([]);
+  const [activeOrders, setActiveOrders] = useState([]);
+  const [historyOrders, setHistoryOrders] = useState([]);
   const [ngoLocation, setNgoLocation] = useState(null);
   
-  // Chat State
-  const [activeChatId, setActiveChatId] = useState(null);
-  const [chatMessages, setChatMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [showChat, setShowChat] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [leftView, setLeftView] = useState('ops'); 
+  const [rightView, setRightView] = useState('list'); 
+  const [messages, setMessages] = useState([]);
+  const [inputMsg, setInputMsg] = useState("");
+  const scrollRef = useRef();
 
-  // 1. SECURITY CHECK (Keep the Admin Approval Lock)
-  if (dbUser?.status === 'pending') {
-    return (
-      <div style={{minHeight:'100vh', background:'#0a0a0a', display:'flex', justifyContent:'center', alignItems:'center', color:'white', fontFamily:'sans-serif'}}>
-        <div style={{textAlign:'center', padding:'3rem', border:'1px solid #333', borderRadius:'20px', background:'#111'}}>
-           <FaLock style={{fontSize:'3rem', color:'#f59e0b', marginBottom:'1rem'}}/>
-           <h2>Account Pending Approval</h2>
-           <p style={{color:'#888', marginBottom:'2rem'}}>Admin verification is required before you can accept donations.</p>
-           <button onClick={logout} className="auth-btn" style={{background:'#333', color:'white'}}>Logout</button>
-        </div>
-      </div>
-    );
-  }
-
-  // 2. INITIAL LOAD (GPS)
+  // 1. Get Exact NGO Location
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => setNgoLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        (err) => console.log("GPS Error", err)
+        pos => setNgoLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => setNgoLocation({ lat: 19.0760, lng: 72.8777 })
       );
     }
   }, []);
 
-  // 3. FETCH REQUESTS (Real-time)
+  // 2. Fetch Requests (Exact Data Only)
   useEffect(() => {
     if (!user) return;
-
-    // Query A: Available Donations (Status = Pending)
-    const qAvailable = query(collection(db, "donations"), where("status", "==", "pending"));
-    
-    // Query B: My Active Tasks (Status = Assigned AND I am the volunteer)
-    const qMyTasks = query(collection(db, "donations"), where("status", "==", "assigned"), where("volunteerId", "==", user.uid));
-
-    const unsub1 = onSnapshot(qAvailable, (snap) => {
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Filter: Show donations that are EITHER (Public) OR (Directly sent to ME)
-      const filtered = list.filter(d => !d.targetNgoId || d.targetNgoId === user.uid);
-      setAvailableRequests(filtered);
+    const q = query(collection(db, "donations"), where("status", "in", ["pending", "accepted", "picked_up", "completed", "cancelled"]), orderBy("createdAt", "desc"));
+    return onSnapshot(q, (snap) => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      setRequests(all.filter(d => d.status === 'pending'));
+      setActiveOrders(all.filter(d => ['accepted', 'picked_up'].includes(d.status)));
+      setHistoryOrders(all.filter(d => ['completed', 'cancelled'].includes(d.status)));
     });
-
-    const unsub2 = onSnapshot(qMyTasks, (snap) => {
-      setMyTasks(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    return () => { unsub1(); unsub2(); };
   }, [user]);
 
-  // 4. CHAT LOGIC
+  // 3. Chat Sync
   useEffect(() => {
-    if (!activeChatId || !showChat) return;
-    const q = query(collection(db, `donations/${activeChatId}/messages`), orderBy("timestamp", "asc"));
-    const unsub = onSnapshot(q, (snap) => setChatMessages(snap.docs.map(d => d.data())));
-    return () => unsub();
-  }, [activeChatId, showChat]);
-
-  const openChat = (donationId) => {
-    setActiveChatId(donationId);
-    setShowChat(true);
-  };
-
-  const sendMessage = async (e) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !activeChatId) return;
-    await addDoc(collection(db, `donations/${activeChatId}/messages`), {
-      text: newMessage, sender: 'ngo', timestamp: serverTimestamp()
+    if (!selectedOrder) return;
+    const q = query(collection(db, `donations/${selectedOrder.id}/messages`), orderBy("timestamp", "asc"));
+    return onSnapshot(q, (snap) => {
+      setMessages(snap.docs.map(d => d.data()));
+      scrollRef.current?.scrollIntoView({ behavior: "smooth" });
     });
-    setNewMessage('');
+  }, [selectedOrder]);
+
+  const handleAccept = async (order) => {
+    await updateDoc(doc(db, "donations", order.id), { status: 'accepted', ngoId: user.uid, ngoName: dbUser?.name });
+    await addDoc(collection(db, `donations/${order.id}/messages`), { 
+      text: "⚠ SYSTEM: Please verify donor phone before pickup.", sender: "system", isSystem: true, timestamp: serverTimestamp() 
+    });
+    setSelectedOrder({ ...order, status: 'accepted' });
+    setRightView('chat');
   };
 
-  // 5. ACCEPT DONATION LOGIC
-  const handleAccept = async (donationId) => {
-    try {
-      await updateDoc(doc(db, "donations", donationId), {
-        status: 'assigned',
-        volunteerId: user.uid,
-        volunteerName: dbUser.name,
-        acceptedAt: serverTimestamp()
-      });
-      alert("Donation Accepted! View it in 'My Active Pickups'.");
-    } catch (err) { alert("Error accepting: " + err.message); }
+  const handleUpdateStatus = async (id, status) => {
+    await updateDoc(doc(db, "donations", id), { status });
+    if (selectedOrder?.id === id) setSelectedOrder(prev => ({...prev, status}));
   };
 
-  // 6. COMPLETE PICKUP LOGIC
-  const handleComplete = async (donationId) => {
-    if(!window.confirm("Confirm food pickup complete?")) return;
-    await updateDoc(doc(db, "donations", donationId), { status: 'picked_up' });
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!inputMsg.trim()) return;
+    await addDoc(collection(db, `donations/${selectedOrder.id}/messages`), { 
+      text: inputMsg, sender: "ngo", senderName: dbUser?.name, timestamp: serverTimestamp() 
+    });
+    setInputMsg("");
   };
+
+  if (loading) return <div className="dashboard-layout">Loading...</div>;
 
   return (
-    <div className="dashboard-container">
-      {/* SIDEBAR */}
-      <aside className="dashboard-sidebar">
-        <div className="sidebar-logo">RePlate<span className="dot">.</span></div>
-        <nav>
-          <button className={`nav-item ${currentView==='overview'?'active':''}`} onClick={()=>setCurrentView('overview')}><FaMapMarkedAlt /> Live Feed</button>
-          <button className={`nav-item ${currentView==='tasks'?'active':''}`} onClick={()=>setCurrentView('tasks')}><FaLeaf /> My Pickups</button>
-          <button className={`nav-item ${currentView==='history'?'active':''}`} onClick={()=>setCurrentView('history')}><FaHistory /> History</button>
-        </nav>
-        <button className="logout-btn" onClick={async()=>{await logout(); navigate('/login');}}><FaSignOutAlt /> Logout</button>
-      </aside>
+    <div className="dashboard-layout">
+      <header className="dashboard-header">
+        <div className="brand"><h1>RePlate<span className="highlight">.</span></h1></div>
+        <div style={{display:'flex', gap:'1rem'}}>
+          <button className={`nav-btn ${leftView==='ops'?'active':''}`} style={{width:'auto'}} onClick={()=>setLeftView('ops')}><FaGlobe/> Ops</button>
+          <button className={`nav-btn ${leftView==='history'?'active':''}`} style={{width:'auto'}} onClick={()=>setLeftView('history')}><FaHistory/> History</button>
+        </div>
+        <div className="user-profile"><span>{dbUser?.name}</span> <FaUserCircle size={24} /> <button onClick={() => { logout(); navigate('/'); }} style={{background:'none', border:'none', color:'#666'}}><FaSignOutAlt/></button></div>
+      </header>
 
-      {/* MAIN CONTENT */}
-      <main className="dashboard-content fade-in">
-        <header className="content-header">
-          <div>
-             <h1>{currentView === 'overview' ? 'Donation Feed 📡' : 'My Tasks 🚚'}</h1>
-             <p className="subtitle">{dbUser?.name} • Authorized Partner</p>
-          </div>
-          <div className="user-pill"><FaUserCircle /><span>{dbUser?.name}</span></div>
-        </header>
-
-        {/* --- VIEW: LIVE FEED & MAP --- */}
-        {currentView === 'overview' && (
-          <div style={{display:'flex', gap:'1.5rem', height:'100%'}}>
-            
-            {/* LEFT: MAP (60%) */}
-            <div className="map-section" style={{flex:2}}>
-              <div className="map-header-bar">
-                 <h3>Live Donor Map</h3>
-                 <span className="badge dist">{availableRequests.length} Pending</span>
-              </div>
-              <div className="map-container-wrapper">
-                 <MapContainer center={ngoLocation ? [ngoLocation.lat, ngoLocation.lng] : [20, 78]} zoom={13} zoomControl={false}>
-                    <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution='&copy; CARTO' />
+      <div className="ngo-grid">
+        <div className="col-ops">
+          {leftView === 'ops' ? (
+            <>
+              <div className="map-wrapper-ngo">
+                {ngoLocation && (
+                  <MapContainer center={[ngoLocation.lat, ngoLocation.lng]} zoom={13} style={{ height: '100%', width: '100%' }}>
+                    <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
                     
-                    {/* My Location */}
-                    {ngoLocation && <Marker position={[ngoLocation.lat, ngoLocation.lng]} icon={greenIcon}><Popup>Your HQ</Popup></Marker>}
+                    {/* HQ Marker */}
+                    <CircleMarker center={[ngoLocation.lat, ngoLocation.lng]} radius={8} pathOptions={{ color: '#00e599', fillColor: '#00e599', fillOpacity: 0.8 }}><Popup>HQ</Popup></CircleMarker>
                     
-                    {/* Donor Markers */}
-                    {availableRequests.map(req => req.location && (
-                       <Marker key={req.id} position={[req.location.lat, req.location.lng]} icon={redIcon}>
-                          <Popup>
-                             <strong>{req.foodItem}</strong><br/>
-                             {req.quantity} servings<br/>
-                             <button onClick={()=>handleAccept(req.id)} style={{background:'#00e599', border:'none', marginTop:'5px', cursor:'pointer'}}>Accept</button>
-                          </Popup>
-                       </Marker>
-                    ))}
-                 </MapContainer>
+                    {/* Requests (ONLY RENDER IF GPS DATA EXISTS) */}
+                    {requests.map(req => {
+                      if (!req.lat || !req.lng) return null; // Accurate Check
+                      return (
+                        <CircleMarker key={req.id} center={[req.lat, req.lng]} radius={6} pathOptions={{ color: '#FFB300', fillColor: '#FFB300', fillOpacity: 0.9 }}>
+                          <Popup><strong>{req.foodItem}</strong><br/>{req.quantity}</Popup>
+                        </CircleMarker>
+                      );
+                    })}
+                  </MapContainer>
+                )}
               </div>
+              <h3 style={{color:'white', margin:0}}><FaBoxOpen/> Pending Requests ({requests.length})</h3>
+              {requests.map(req => (
+                <div key={req.id} className="glass-panel">
+                  <h4 style={{margin:'0 0 5px 0'}}>{req.foodItem} <span style={{fontSize:'0.8rem', color:'#888'}}>({req.quantity})</span></h4>
+                  <p style={{color:'#888', margin:'0 0 10px 0'}}><FaMapMarkerAlt/> {req.location}</p>
+                  <button className="btn-primary" onClick={() => handleAccept(req)}>Accept Request</button>
+                </div>
+              ))}
+            </>
+          ) : (
+            <>
+              <h3 style={{color:'white', margin:0}}><FaHistory/> Order History</h3>
+              {historyOrders.map(order => (
+                <div key={order.id} className="glass-panel" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                   <div><h4>{order.foodItem} ({order.quantity})</h4><p style={{color:'#888', margin:0}}>{order.donorName}</p></div>
+                   <span className={`status-pill ${order.status}`}>{order.status}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+
+        <div className="col-task">
+          {rightView === 'list' && (
+            <div style={{padding:'1.5rem', flex:1, overflowY:'auto'}}>
+              <h3 style={{color:'white', marginTop:0}}><FaTruck/> Active Operations ({activeOrders.length})</h3>
+              {activeOrders.map(order => (
+                <div key={order.id} className="glass-panel" onClick={() => { setSelectedOrder(order); setRightView('chat'); }} style={{marginBottom:'1rem', cursor:'pointer', borderLeft:'3px solid #00e599'}}>
+                  <div style={{display:'flex', justifyContent:'space-between'}}><h4>{order.foodItem}</h4><span className={`status-pill ${order.status}`}>{order.status.replace('_',' ')}</span></div>
+                  <p style={{color:'#888', margin:0}}>{order.donorName} • {order.quantity}</p>
+                </div>
+              ))}
             </div>
+          )}
 
-            {/* RIGHT: FEED LIST (40%) */}
-            <div className="right-sidebar" style={{width:'35%', background:'#161616', borderLeft:'none', borderRadius:'20px', border:'1px solid #333'}}>
-               <h3>Incoming Requests</h3>
-               <div className="feed-section">
-                  {availableRequests.length === 0 ? <p style={{color:'#666', textAlign:'center', marginTop:'2rem'}}>No pending donations nearby.</p> : 
-                    availableRequests.map(req => (
-                      <div key={req.id} className="request-card slide-up">
-                         <div className="request-header">
-                            <div>
-                               <h4 style={{margin:0, fontSize:'1.1rem'}}>{req.foodItem}</h4>
-                               <p style={{margin:'5px 0', color:'#888', fontSize:'0.9rem'}}><FaUtensils size={10}/> {req.quantity} Servings</p>
-                            </div>
-                            <span className="badge food">{req.targetNgoId ? 'Direct Request' : 'General'}</span>
-                         </div>
-                         
-                         <div className="request-badges">
-                            <span className="badge"><FaMapMarkerAlt size={10}/> {req.location && ngoLocation ? `${calculateDistance(ngoLocation.lat, ngoLocation.lng, req.location.lat, req.location.lng)} km` : 'N/A'}</span>
-                            <span className="badge">{req.pickupAddress.slice(0, 15)}...</span>
-                         </div>
-
-                         <button className="accept-btn" onClick={() => handleAccept(req.id)}>
-                            <FaCheck /> Accept Pickup
-                         </button>
-                      </div>
-                    ))
-                  }
-               </div>
-            </div>
-          </div>
-        )}
-
-        {/* --- VIEW: MY TASKS --- */}
-        {currentView === 'tasks' && (
-           <div className="stats-grid" style={{gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))'}}>
-              {myTasks.length === 0 ? <p style={{color:'#666'}}>No active tasks. Go to Live Feed to accept one.</p> :
-                myTasks.map(task => (
-                   <div key={task.id} className="stat-card glow-green" style={{flexDirection:'column', alignItems:'flex-start'}}>
-                      <div style={{display:'flex', justifyContent:'space-between', width:'100%'}}>
-                         <div className="status-pill assigned">Active Pickup</div>
-                         <button onClick={()=>openChat(task.id)} style={{background:'transparent', border:'none', color:'white', cursor:'pointer'}}><FaCommentDots size={18}/></button>
-                      </div>
-                      
-                      <h3 style={{margin:'10px 0'}}>{task.foodItem}</h3>
-                      <p style={{color:'#888'}}>{task.quantity} servings • {task.pickupAddress}</p>
-                      
-                      <button className="accept-btn" style={{background:'#333', color:'white', border:'1px solid #555'}} onClick={()=>handleComplete(task.id)}>
-                         <FaCheck /> Mark as Picked Up
-                      </button>
-                   </div>
-                ))
-              }
-           </div>
-        )}
-
-        {/* CHAT WINDOW (Shared) */}
-        {showChat && (
-           <div className="chat-window slide-up">
-              <div className="chat-header"><span>Donor Chat</span><FaTimes onClick={()=>setShowChat(false)} style={{cursor:'pointer'}}/></div>
+          {rightView === 'chat' && selectedOrder && (
+            <div className="chat-container">
+              <div className="chat-header">
+                <button onClick={() => setRightView('list')} style={{background:'none', border:'none', color:'#888', cursor:'pointer'}}>Back</button>
+                <div style={{display:'flex', gap:'10px'}}>
+                   {selectedOrder.status === 'accepted' && <button className="btn-secondary" onClick={() => handleUpdateStatus(selectedOrder.id, 'picked_up')}>Start Pickup</button>}
+                   {selectedOrder.status === 'picked_up' && <button className="btn-primary" style={{width:'auto'}} onClick={() => handleUpdateStatus(selectedOrder.id, 'completed')}>Complete</button>}
+                </div>
+              </div>
               <div className="chat-messages">
-                 {chatMessages.map((m,i)=><div key={i} className={`chat-bubble ${m.sender==='ngo'?'mine':'theirs'}`}>{m.text}</div>)}
+                {messages.map((m, i) => <div key={i} className={`msg ${m.isSystem ? 'system' : m.sender === 'ngo' ? 'sent' : 'received'}`}>{m.isSystem && <FaExclamationTriangle style={{marginRight:5}}/>}{m.text}</div>)}
+                <div ref={scrollRef} />
               </div>
-              <form className="chat-input-area" onSubmit={sendMessage}>
-                 <input value={newMessage} onChange={e=>setNewMessage(e.target.value)} placeholder="Type msg..." />
-                 <button className="chat-send-btn"><FaPaperPlane/></button>
+              <form className="chat-input-bar" onSubmit={handleSend}>
+                <input className="chat-input-field" value={inputMsg} onChange={e => setInputMsg(e.target.value)} placeholder="Message donor..." />
+                <button className="chat-send-btn"><FaPaperPlane/></button>
               </form>
-           </div>
-        )}
-      </main>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
-
 export default NGODashboard;

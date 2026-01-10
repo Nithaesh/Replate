@@ -22,31 +22,28 @@ const DonorLogin = () => {
   }, [dbUser, navigate]);
 
   // 2. GOOGLE LOGIN (THE FIX)
+// FIND YOUR HANDLE GOOGLE LOGIN FUNCTION AND REPLACE IT:
   const handleGoogleClick = async () => {
-    setLoading(true);
     try {
-      const result = await loginWithGoogle();
-      const googleUser = result.user;
-
-      // Check if this user already exists in Database
-      const userRef = doc(db, "users", googleUser.uid);
-      const userSnap = await getDoc(userRef);
-
-      if (!userSnap.exists()) {
-        // NEW USER: Auto-register as DONOR immediately
-        await registerUserInDB(googleUser.uid, {
-          name: googleUser.displayName,
-          email: googleUser.email,
-          phoneNumber: '',
-          photoURL: googleUser.photoURL
-        }, 'donor');
-      } 
-      // If user exists, the useEffect above will handle the redirect automatically
+      console.log("UI Step 1: Button Clicked"); // DEBUG LOG
+      const user = await loginWithGoogle();
       
-    } catch (err) {
-      console.error("Google Login Error:", err);
-      alert("Login Failed: " + err.message);
-      setLoading(false);
+      console.log("UI Step 2: Data Received from Context:", user); // DEBUG LOG
+
+      if (!user) {
+        console.error("CRITICAL ERROR: User is undefined!");
+        alert("Login System Error: No user data received. Check Console.");
+        return;
+      }
+
+      // Safe Check
+      if (user.uid) {
+         console.log("UI Step 3: Redirecting...");
+         // Your redirect logic here...
+         navigate('/dashboard/donor'); 
+      }
+    } catch (error) {
+      console.error("UI Error:", error);
     }
   };
 

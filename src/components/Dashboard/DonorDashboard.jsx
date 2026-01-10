@@ -1,328 +1,192 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { db } from '../../firebase';
-import { 
-  collection, addDoc, query, where, onSnapshot, orderBy, limit, serverTimestamp, updateDoc, doc, increment, getDocs 
-} from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FaPlus, FaLeaf, FaHistory, FaMedal, FaStar, FaTruck, FaCheckCircle, 
-  FaUserCircle, FaSignOutAlt, FaTimes, FaMapMarkerAlt, FaBuilding, FaPaperPlane, FaCommentDots 
-} from 'react-icons/fa';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { db } from '../../firebase';
+import { collection, query, where, onSnapshot, orderBy, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
+import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
+import { FaLeaf, FaHistory, FaHandHoldingHeart, FaUserCircle, FaSignOutAlt, FaPaperPlane, FaArrowLeft, FaStar, FaBoxOpen } from 'react-icons/fa';
+import DonateFoodModal from './DonateFoodModal'; 
+import PolicyModal from '../Shared/PolicyModal'; 
 import './Dashboard.css';
 
-// --- ICONS ---
-import iconShadow from 'leaflet/dist/images/marker-icon.png';
-const greenIcon = new L.Icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png', shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34] });
-const blueIcon = new L.Icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34] });
-
-// --- HELPER: Generate Consistent Fake Location around User ---
-// This ensures NGOs always appear "nearby" for the demo, even if they lack real GPS
-const getSmartDemoLocation = (userLat, userLng, index) => {
-  const r = 0.02; // Roughly 2-3km radius
-  // Use index to create a fixed offset so they don't jump around
-  const angle = (index * 75) * (Math.PI / 180); 
-  return {
-    lat: userLat + (r * Math.cos(angle)),
-    lng: userLng + (r * Math.sin(angle))
-  };
-};
-
 const DonorDashboard = () => {
-  const { user, dbUser, logout } = useAuth();
+  const { user, dbUser, logout, loading } = useAuth();
   const navigate = useNavigate();
-
-  // --- STATE ---
-  const [currentView, setCurrentView] = useState('overview');
-  const [activeDonation, setActiveDonation] = useState(null);
-  const [nearbyNGOs, setNearbyNGOs] = useState([]);
-  const [filteredNGOs, setFilteredNGOs] = useState([]); 
-  const [pastDonations, setPastDonations] = useState([]);
+  const [view, setView] = useState('overview'); 
+  const [activeOrders, setActiveOrders] = useState([]);
+  const [historyOrders, setHistoryOrders] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
-  const [isMapReady, setIsMapReady] = useState(false); // New: Prevents map jump
+  const [nearbyNGOs, setNearbyNGOs] = useState([]);
+  
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const scrollRef = useRef();
+  
+  const [stats, setStats] = useState({ meals: 0, karma: 0, badge: 'Bronze' });
+  const [showDonate, setShowDonate] = useState(false);
+  const [showPolicy, setShowPolicy] = useState(false);
+  const [preSelectedNGO, setPreSelectedNGO] = useState(null);
 
-  // UI
-  const [showModal, setShowModal] = useState(false);
-  const [showChat, setShowChat] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [chatMessages, setChatMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
-
-  // Form
-  const [formData, setFormData] = useState({ 
-    foodItem: '', quantity: '', pickupAddress: dbUser?.address || '', notes: '', 
-    targetNgoId: null, targetNgoName: null 
-  });
-
-  // 1. INITIAL LOAD: Get GPS First, Then Load NGOs
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
-          const uLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          setUserLocation(uLoc);
-          setIsMapReady(true); // Map is ready to show
-
-          // Fetch NGOs and place them around the user
-          const q = query(collection(db, "users"), where("role", "==", "institutional_receiver"), where("status", "==", "active"));
-          const snapshot = await getDocs(q);
-          
-          const processedNGOs = snapshot.docs.map((doc, index) => {
-            const data = doc.data();
-            // Demo Logic: If NGO has no location, place them near the user
-            const location = data.location || getSmartDemoLocation(uLoc.lat, uLoc.lng, index);
-            
-            // Calculate distance
-            const dist = calculateDistance(uLoc.lat, uLoc.lng, location.lat, location.lng);
-
-            return { id: doc.id, ...data, simLat: location.lat, simLng: location.lng, distance: dist };
-          });
-          
-          setNearbyNGOs(processedNGOs.sort((a,b) => a.distance - b.distance));
-          setFilteredNGOs(processedNGOs);
+          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setUserLocation(loc);
+          const q = query(collection(db, "users"), where("role", "==", "institutional_receiver"));
+          const snap = await getDocs(q);
+          const realNGOs = snap.docs.map(d => {
+            const data = d.data();
+            if(data.location && data.location.lat) return { id: d.id, ...data };
+            return null;
+          }).filter(n => n!==null);
+          setNearbyNGOs(realNGOs);
         },
-        (err) => { 
-          console.log("GPS Error", err); 
-          // Fallback to India Center if denied
-          setUserLocation({ lat: 20.5937, lng: 78.9629 });
-          setIsMapReady(true);
-        } 
+        () => setUserLocation({ lat: 19.0760, lng: 72.8777 }) 
       );
     }
   }, []);
 
-  // Distance Calc Helper
-  const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371; 
-    const dLat = (lat2-lat1) * (Math.PI/180);
-    const dLon = (lon2-lon1) * (Math.PI/180);
-    const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*(Math.PI/180))*Math.cos(lat2*(Math.PI/180)) * Math.sin(dLon/2)*Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-    return c.toFixed(1);
-  };
-
-  // 2. LISTENERS
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, "donations"), where("donorId", "==", user.uid), where("status", "in", ["pending", "assigned", "picked_up"]), orderBy("createdAt", "desc"), limit(1));
-    const unsub1 = onSnapshot(q, (snap) => setActiveDonation(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() }));
-    
-    // History Listener
-    const qHist = query(collection(db, "donations"), where("donorId", "==", user.uid), orderBy("createdAt", "desc"), limit(10));
-    const unsub2 = onSnapshot(qHist, (snap) => setPastDonations(snap.docs.map(d=>({id:d.id, ...d.data()}))));
-
-    return () => { unsub1(); unsub2(); };
+    const q = query(collection(db, "donations"), where("donorId", "==", user.uid), orderBy("createdAt", "desc"));
+    return onSnapshot(q, (snap) => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setActiveOrders(all.filter(d => ['pending', 'accepted', 'picked_up'].includes(d.status)));
+      setHistoryOrders(all.filter(d => ['completed', 'cancelled'].includes(d.status)));
+      const completed = all.filter(d => d.status === 'completed');
+      const meals = completed.reduce((sum, o) => sum + (parseInt(o.quantity)||0), 0);
+      setStats({ meals, karma: (meals*10) + (completed.length*50), badge: meals > 50 ? 'Gold' : meals > 10 ? 'Silver' : 'Bronze' });
+    });
   }, [user]);
 
-  // 3. CHAT LISTENER (Fixed)
   useEffect(() => {
-    if (!activeDonation || !showChat) return;
-    const q = query(collection(db, `donations/${activeDonation.id}/messages`), orderBy("timestamp", "asc"));
-    const unsub = onSnapshot(q, (snap) => setChatMessages(snap.docs.map(doc => doc.data())));
-    return () => unsub();
-  }, [activeDonation, showChat]);
-
-  // 4. HANDLERS
-  const handleDonateOpen = (ngo = null) => {
-    setFormData({
-      foodItem: '', quantity: '', pickupAddress: dbUser?.address || '', notes: '',
-      targetNgoId: ngo ? ngo.id : null,
-      targetNgoName: ngo ? ngo.name : null
+    if (!selectedOrder) return;
+    const q = query(collection(db, `donations/${selectedOrder.id}/messages`), orderBy("timestamp", "asc"));
+    return onSnapshot(q, (snap) => {
+      setMessages(snap.docs.map(d => d.data()));
+      scrollRef.current?.scrollIntoView({ behavior: "smooth" });
     });
-    setShowModal(true);
-  };
+  }, [selectedOrder]);
 
-  const handleDonateSubmit = async (e) => {
+  const handleSendChat = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    try {
-      await addDoc(collection(db, "donations"), {
-        donorId: user.uid, donorName: dbUser?.name || "Anonymous",
-        foodItem: formData.foodItem, quantity: formData.quantity, pickupAddress: formData.pickupAddress,
-        location: userLocation, targetNgoId: formData.targetNgoId, targetNgoName: formData.targetNgoName,
-        status: 'pending', createdAt: serverTimestamp(),
-      });
-      await updateDoc(doc(db, "users", user.uid), { "donorDetails.totalDonations": increment(1) });
-      setLoading(false); setShowModal(false);
-    } catch (err) { alert(err.message); setLoading(false); }
+    if (!chatInput.trim()) return;
+    await addDoc(collection(db, `donations/${selectedOrder.id}/messages`), {
+      text: chatInput, sender: "donor", senderName: dbUser?.name, timestamp: serverTimestamp()
+    });
+    setChatInput("");
   };
 
-  const sendMessage = async (e) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !activeDonation) return;
-    
-    try {
-      await addDoc(collection(db, `donations/${activeDonation.id}/messages`), {
-        text: newMessage, 
-        sender: 'donor', 
-        timestamp: serverTimestamp()
-      });
-      setNewMessage('');
-    } catch (err) {
-      console.error("Chat Error:", err);
-      alert("Message failed. Try again.");
-    }
+  const handleDirectDonate = (ngo) => {
+    setPreSelectedNGO(ngo);
+    setShowDonate(true);
   };
 
-  // Auto-Center Map Component
-  const RecenterMap = ({ lat, lng }) => { 
-    const map = useMap(); 
-    useEffect(() => { if(lat && lng) map.setView([lat, lng], 14, { animate: true }); }, [lat, lng]); 
-    return null; 
-  };
+  if (loading) return <div className="dashboard-layout">Loading...</div>;
 
   return (
-    <div className="dashboard-container">
-      {/* SIDEBAR */}
-      <aside className="dashboard-sidebar">
-        <div className="sidebar-logo">RePlate<span className="dot">.</span></div>
-        <nav>
-          <button className={`nav-item ${currentView==='overview'?'active':''}`} onClick={()=>setCurrentView('overview')}><FaLeaf /> Overview</button>
-          <button className={`nav-item ${currentView==='history'?'active':''}`} onClick={()=>setCurrentView('history')}><FaHistory /> History</button>
-        </nav>
-        <button className="logout-btn" onClick={async()=>{await logout(); navigate('/login');}}><FaSignOutAlt /> Logout</button>
-      </aside>
+    <div className="dashboard-layout">
+      <header className="dashboard-header">
+        <div className="brand"><h1>RePlate<span className="highlight">.</span></h1></div>
+        <div className="user-profile"><span>{dbUser?.name}</span> <FaUserCircle size={24} /> <button onClick={()=>{logout(); navigate('/')}} style={{background:'none', border:'none', color:'#666'}}><FaSignOutAlt/></button></div>
+      </header>
 
-      {/* MAIN CONTENT */}
-      <main className="dashboard-content fade-in">
-        <header className="content-header">
-          <div><h1>Hello, {dbUser?.name?.split(' ')[0]} 👋</h1></div>
-          <div className="user-pill"><FaUserCircle /><span>{dbUser?.name}</span></div>
-        </header>
-
-        {currentView === 'overview' ? (
-          <>
-            {/* STATS */}
-            <div className="stats-grid">
-              <div className="stat-card glow-green"><div className="icon-box green"><FaLeaf/></div><div><h3>{dbUser?.donorDetails?.totalMealsDonated || 0}</h3><p>Meals Saved</p></div></div>
-              <div className="stat-card glow-gold"><div className="icon-box gold"><FaStar/></div><div><h3>{dbUser?.karmaPoints || 0}</h3><p>Karma</p></div></div>
-              <div className="stat-card glow-purple"><div className="icon-box purple"><FaMedal/></div><div><h3>{dbUser?.donorDetails?.donorBadge || 'Bronze'}</h3><p>Level</p></div></div>
-            </div>
-
-            {/* ACTIVE TRACKER */}
-            {activeDonation && (
-              <div className="active-tracker-card slide-up">
-                <div className="tracker-header">
-                   <h3><span className="pulse-dot"></span> Donation #{activeDonation.id.slice(0,5)}</h3>
-                   <button className="donate-btn-mini" style={{width:'auto', padding:'8px 20px'}} onClick={() => setShowChat(!showChat)}>
-                     {showChat ? 'Close Chat' : 'Open Chat'} <FaCommentDots/>
-                   </button>
-                </div>
-                
-                <div className="progress-track">
-                   <div className="step completed"><div className="step-dot"><FaCheckCircle/></div><p>Sent</p></div>
-                   <div className={`step ${activeDonation.status!=='pending'?'completed':'active'}`}><div className="step-dot"><FaUserCircle/></div><p>Accepted</p></div>
-                   <div className={`step ${activeDonation.status==='picked_up'?'completed':''}`}><div className="step-dot"><FaTruck/></div><p>Pickup</p></div>
-                </div>
-
-                {/* CHAT WINDOW */}
-                {showChat && (
-                  <div className="chat-window slide-up">
-                     <div className="chat-header"><span>{activeDonation.targetNgoName || 'Volunteer'} Chat</span><FaTimes onClick={()=>setShowChat(false)} style={{cursor:'pointer'}}/></div>
-                     <div className="chat-messages">
-                        {chatMessages.length === 0 && (
-                          <div style={{textAlign:'center', padding:'20px', color:'#666', fontSize:'0.8rem'}}>
-                            {activeDonation.status === 'pending' 
-                              ? "Waiting for an NGO to accept. You can leave a message for them now." 
-                              : "Start the conversation!"}
-                          </div>
-                        )}
-                        {chatMessages.map((m,i)=><div key={i} className={`chat-bubble ${m.sender==='donor'?'mine':'theirs'}`}>{m.text}</div>)}
-                     </div>
-                     <form className="chat-input-area" onSubmit={sendMessage}>
-                        <input value={newMessage} onChange={e=>setNewMessage(e.target.value)} placeholder="Type a message..." />
-                        <button className="chat-send-btn"><FaPaperPlane size={14}/></button>
-                     </form>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* MAP SECTION */}
-            <div className="map-section slide-up">
-              <div className="map-header-bar">
-                <div><h3 style={{margin:0}}>Find & Donate</h3></div>
-                <button className="general-donate-btn" onClick={() => handleDonateOpen(null)}><FaPlus /> Random Donation</button>
-              </div>
-              <div className="map-container-wrapper">
-                {!isMapReady ? (
-                  <div style={{display:'flex', justifyContent:'center', alignItems:'center', height:'100%', color:'#666'}}>
-                    <p>Acquiring GPS Location...</p>
-                  </div>
-                ) : (
-                  <MapContainer center={[userLocation.lat, userLocation.lng]} zoom={14} zoomControl={false}>
-                    <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution='&copy; CARTO' />
-                    <RecenterMap lat={userLocation.lat} lng={userLocation.lng} />
-                    
-                    {/* User */}
-                    <Marker position={[userLocation.lat, userLocation.lng]} icon={blueIcon}><Popup>You are here</Popup></Marker>
-                    
-                    {/* NGOs */}
-                    {nearbyNGOs.map(ngo => (
-                      <Marker key={ngo.id} position={[ngo.simLat, ngo.simLng]} icon={greenIcon}>
-                        <Popup>
-                          <strong>{ngo.name}</strong><br/>
-                          <button onClick={()=>handleDonateOpen(ngo)} style={{marginTop:'5px', background:'#00e599', border:'none', borderRadius:'4px', cursor:'pointer', padding:'5px'}}>Donate</button>
-                        </Popup>
-                      </Marker>
-                    ))}
-                  </MapContainer>
-                )}
-              </div>
-            </div>
-          </>
-        ) : (
-          /* HISTORY VIEW */
-          <div className="history-list fade-in">
-             {pastDonations.map(d => (
-                <div key={d.id} className="history-item">
-                   <div>
-                      <h4>{d.foodItem} ({d.quantity})</h4>
-                      <p style={{color:'#666', fontSize:'0.9rem'}}>{new Date(d.createdAt?.seconds*1000).toLocaleDateString()} • {d.status}</p>
-                   </div>
-                   <div className={`status-badge ${d.status==='picked_up'?'delivered':''}`}>{d.status.replace('_', ' ')}</div>
-                </div>
-             ))}
-             {pastDonations.length===0 && <p style={{color:'#666'}}>No history yet.</p>}
-          </div>
-        )}
-      </main>
-
-      {/* RIGHT SIDEBAR */}
-      <aside className="right-sidebar">
-        <h3><FaMapMarkerAlt /> Nearby NGOs</h3>
-        {filteredNGOs.length === 0 ? <p style={{color:'#666'}}>Scanning area...</p> : filteredNGOs.map(ngo => (
-          <div key={ngo.id} className="ngo-card" onClick={() => handleDonateOpen(ngo)}>
-            <div className="distance-tag">{ngo.distance} km</div>
-            <h4>{ngo.name}</h4>
-            <p><FaBuilding size={10}/> {ngo.email.split('@')[0]}</p>
-            <button className="donate-btn-mini">Donate Directly</button>
-          </div>
-        ))}
-      </aside>
-
-      {/* MODAL */}
-      {showModal && (
-        <div className="modal-overlay fade-in">
-          <div className="modal-content">
-            <div style={{display:'flex', justifyContent:'space-between', marginBottom:'1rem'}}>
-              <h2>{formData.targetNgoName ? `Donate to ${formData.targetNgoName}` : 'Random Donation'}</h2>
-              <FaTimes onClick={()=>setShowModal(false)} style={{cursor:'pointer'}}/>
-            </div>
-            <form onSubmit={handleDonateSubmit}>
-               <div style={{marginBottom:'10px'}}><label style={{color:'#888', fontSize:'0.9rem'}}>Food Item</label><input className="styled-input" required value={formData.foodItem} onChange={e=>setFormData({...formData, foodItem:e.target.value})}/></div>
-               <div style={{marginBottom:'10px'}}><label style={{color:'#888', fontSize:'0.9rem'}}>Quantity</label><input className="styled-input" required value={formData.quantity} onChange={e=>setFormData({...formData, quantity:e.target.value})}/></div>
-               <div style={{marginBottom:'10px'}}><label style={{color:'#888', fontSize:'0.9rem'}}>Pickup Address</label><input className="styled-input" required value={formData.pickupAddress} onChange={e=>setFormData({...formData, pickupAddress:e.target.value})}/></div>
-               <button className="auth-btn" disabled={loading}>{loading?'Processing...':'Confirm Donation'}</button>
-            </form>
+      <div className="donor-grid">
+        <div className="sidebar">
+          <button className="btn-primary" onClick={() => {setPreSelectedNGO(null); setShowDonate(true);}}><FaHandHoldingHeart /> Broadcast Donation</button>
+          <nav>
+            <button className={`nav-btn ${view==='overview'?'active':''}`} onClick={()=>setView('overview')}><FaLeaf/> Overview</button>
+            <button className={`nav-btn ${view==='history'?'active':''}`} onClick={()=>setView('history')}><FaHistory/> History</button>
+          </nav>
+          <div className="glass-panel" style={{marginTop:'auto'}}>
+            <div style={{color:'#888', fontSize:'0.9rem'}}>Karma Points</div>
+            <div style={{fontSize:'1.8rem', fontWeight:'bold', color:'#FFB300', display:'flex', alignItems:'center', gap:'10px'}}><FaStar/> {stats.karma}</div>
+            <div style={{fontSize:'0.8rem', color:'#888'}}>Level: {stats.badge}</div>
           </div>
         </div>
-      )}
+
+        <div className="content-area">
+          {view === 'overview' && (
+            <>
+              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:'1.5rem'}}>
+                <div className="stat-card">
+                  <div className="stat-icon-box" style={{background:'rgba(0,229,153,0.1)', color:'#00e599'}}><FaLeaf/></div>
+                  <div><h3 style={{margin:0, fontSize:'1.5rem'}}>{stats.meals}</h3><p style={{margin:0, color:'#888'}}>Meals Saved</p></div>
+                </div>
+                <div className="stat-card">
+                   <div className="stat-icon-box" style={{background:'rgba(33,150,243,0.1)', color:'#2196F3'}}><FaBoxOpen/></div>
+                   <div><h3 style={{margin:0, fontSize:'1.5rem'}}>{activeOrders.length}</h3><p style={{margin:0, color:'#888'}}>Active Orders</p></div>
+                </div>
+              </div>
+
+              <div className="map-wrapper-donor">
+                {userLocation ? (
+                  <MapContainer center={[userLocation.lat, userLocation.lng]} zoom={13} style={{ height: '100%', width: '100%' }}>
+                    <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+                    <CircleMarker center={[userLocation.lat, userLocation.lng]} radius={8} pathOptions={{ color: '#00e599', fillColor: '#00e599', fillOpacity: 0.8 }}><Popup>You</Popup></CircleMarker>
+                    {nearbyNGOs.map(ngo => (
+                      <CircleMarker key={ngo.id} center={[ngo.location.lat, ngo.location.lng]} radius={6} pathOptions={{ color: '#2196F3', fillColor: '#2196F3', fillOpacity: 0.8 }}>
+                        <Popup><strong>{ngo.name}</strong><br/><button style={{marginTop:'5px', padding:'5px', background:'#00e599', border:'none', cursor:'pointer', borderRadius:'4px'}} onClick={() => handleDirectDonate(ngo)}>Donate Here</button></Popup>
+                      </CircleMarker>
+                    ))}
+                  </MapContainer>
+                ) : <div style={{padding:'2rem'}}>Locating...</div>}
+              </div>
+
+              <h3 style={{margin:'0'}}>Active Donations</h3>
+              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:'1rem'}}>
+                {activeOrders.length === 0 ? <div style={{color:'#666'}}>No active donations.</div> : activeOrders.map(order => (
+                  <div key={order.id} className="glass-panel" onClick={() => {setSelectedOrder(order); setView('chat')}} style={{cursor:'pointer', borderLeft:'3px solid #00e599'}}>
+                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:'5px'}}>
+                      <span style={{fontWeight:'700'}}>{order.foodItem}</span>
+                      <span className={`status-pill ${order.status}`}>{order.status.replace('_',' ')}</span>
+                    </div>
+                    <p style={{color:'#888', margin:0, fontSize:'0.9rem'}}>{order.quantity} • {order.location}</p>
+                    {order.status !== 'pending' && <p style={{color:'#00e599', fontSize:'0.8rem', marginTop:'10px'}}>Click to Chat</p>}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {view === 'history' && (
+             <div>
+               <h3>Donation History</h3>
+               {historyOrders.map(order => (
+                 <div key={order.id} className="glass-panel" style={{marginBottom:'1rem', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                   <div><h4 style={{margin:'0 0 5px 0'}}>{order.foodItem} ({order.quantity})</h4><p style={{color:'#888', margin:0}}>Picked up by: {order.ngoName || "Unknown"}</p></div>
+                   <span className={`status-pill ${order.status}`}>{order.status}</span>
+                 </div>
+               ))}
+             </div>
+          )}
+
+          {view === 'chat' && selectedOrder && (
+            <div className="chat-container">
+              <div className="chat-header">
+                <button onClick={()=>setView('overview')} style={{background:'none', border:'none', color:'#888', cursor:'pointer'}}><FaArrowLeft/> Back</button>
+                <h4 style={{margin:0}}>Chat with {selectedOrder.ngoName || "NGO"}</h4>
+              </div>
+              <div className="chat-messages">
+                {messages.map((m,i) => <div key={i} className={`msg ${m.isSystem?'system':m.sender==='donor'?'sent':'received'}`}>{m.text}</div>)}
+                <div ref={scrollRef}/>
+              </div>
+              
+              {/* --- FIXED CHAT INPUT BAR --- */}
+              <form className="chat-input-bar" onSubmit={handleSendChat}>
+                <input className="chat-input-field" value={chatInput} onChange={e=>setChatInput(e.target.value)} placeholder="Type a message..."/>
+                <button className="chat-send-btn"><FaPaperPlane/></button>
+              </form>
+            </div>
+          )}
+        </div>
+      </div>
+      {showDonate && <DonateFoodModal onClose={() => setShowDonate(false)} preSelectedNGO={preSelectedNGO} onSuccess={() => alert("Donation Placed!")} />}
+      {showPolicy && <PolicyModal onClose={() => setShowPolicy(false)} user={user} />}
     </div>
   );
 };
-
 export default DonorDashboard;

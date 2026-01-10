@@ -1,99 +1,209 @@
-/* src/components/Auth/Auth.css */
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+/* --- RePlate Auth Design Language --- */
 
-:root {
-  --bg-dark: #0a0a0a;
-  --bg-card: #121212;
-  --primary: #00e599;  /* RePlate Green */
-  --primary-dim: rgba(0, 229, 153, 0.1);
-  --accent: #f43f5e;
-  --text-main: #ffffff;
-  --text-muted: #a3a3a3;
-  --glass-bg: rgba(255, 255, 255, 0.03);
-  --glass-border: rgba(255, 255, 255, 0.08);
-}
-
+/* 1. BACKGROUND & GLASSMORPHISM */
 .auth-container {
-  min-height: 100vh; width: 100%;
-  display: flex; justify-content: center; align-items: center;
-  background: radial-gradient(circle at center, #111 0%, #0a0a0a 100%);
+  min-height: 100vh;
+  background: radial-gradient(circle at 50% 10%, #1a1a1a 0%, #000000 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
   font-family: 'Outfit', sans-serif;
-  position: relative; overflow: hidden; padding: 1rem;
+  overflow: hidden;
+  position: relative;
 }
 
-.auth-container::before {
-  content: ''; position: absolute; top: -20%; left: 50%; transform: translateX(-50%);
-  width: 600px; height: 600px;
-  background: radial-gradient(circle, rgba(0, 229, 153, 0.08) 0%, transparent 70%);
-  filter: blur(80px); pointer-events: none;
+/* The Glass Card */
+.glass-card {
+  background: rgba(22, 22, 22, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  padding: 3rem 2.5rem;
+  width: 100%;
+  max-width: 420px;
+  border-radius: 24px;
+  text-align: center;
+  position: relative;
+  animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.auth-card {
-  background: var(--glass-bg);
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
-  padding: 2.5rem; border-radius: 20px;
-  width: 100%; max-width: 400px; color: var(--text-main);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-  animation: scaleIn 0.4s ease-out;
+/* 2. TYPOGRAPHY */
+.auth-title {
+  color: white;
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.5px;
 }
 
-.auth-header { text-align: center; margin-bottom: 2rem; }
-.logo-text { font-size: 1.8rem; font-weight: 800; color: white; cursor: pointer; }
-.logo-text .dot { color: var(--primary); }
-.auth-subtitle { color: var(--text-muted); font-size: 0.95rem; margin-top: 0.5rem; }
-
-.form-group { margin-bottom: 1.2rem; }
-.form-group label { display: block; margin-bottom: 0.4rem; color: var(--text-muted); font-size: 0.85rem; font-weight: 500; }
-.input-wrapper { position: relative; }
-.input-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-muted); transition: 0.3s; }
-
-.styled-input {
-  width: 100%; padding: 0.9rem 0.9rem 0.9rem 2.8rem;
-  background: rgba(0, 0, 0, 0.3); border: 1px solid var(--glass-border);
-  border-radius: 10px; color: white; font-family: 'Outfit', sans-serif;
-  font-size: 0.95rem; transition: all 0.3s ease; outline: none;
-}
-.styled-input:focus {
-  border-color: var(--primary); background: rgba(0, 0, 0, 0.5);
-  box-shadow: 0 0 0 3px var(--primary-dim);
-}
-.styled-input:focus + .input-icon { color: var(--primary); }
-
-.auth-btn {
-  width: 100%; padding: 0.9rem; border-radius: 50px; border: none;
-  font-size: 1rem; font-weight: 700; font-family: 'Outfit', sans-serif;
-  cursor: pointer; transition: all 0.3s ease; margin-top: 1rem;
-  display: flex; justify-content: center; align-items: center; gap: 10px;
+.auth-subtitle {
+  color: #888;
+  font-size: 0.95rem;
+  margin-bottom: 2.5rem;
+  line-height: 1.5;
 }
 
-/* Primary Button (Green) */
+.highlight { color: #00e599; }
+
+/* 3. INPUTS & FORMS */
+.input-group {
+  position: relative;
+  margin-bottom: 1.2rem;
+  text-align: left;
+}
+
+.input-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+  font-size: 1.1rem;
+  transition: 0.3s;
+  z-index: 2;
+}
+
+.glass-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid #333;
+  color: white;
+  padding: 14px 14px 14px 48px; /* Space for icon */
+  border-radius: 12px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  font-family: 'Outfit', sans-serif;
+}
+
+.glass-input:focus {
+  outline: none;
+  border-color: #00e599;
+  box-shadow: 0 0 0 4px rgba(0, 229, 153, 0.1);
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.glass-input:focus + .input-icon { color: #00e599; }
+
+/* 4. BUTTONS (GLOW & NEON) */
 .btn-primary {
-  background: var(--primary); color: #0a0a0a;
+  width: 100%;
+  padding: 16px;
+  background: #00e599;
+  color: #000;
+  border: none;
+  border-radius: 14px;
+  font-weight: 700;
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 1rem;
+  position: relative;
+  overflow: hidden;
 }
+
 .btn-primary:hover {
-  transform: translateY(-2px); box-shadow: 0 0 20px rgba(0, 229, 153, 0.3);
+  background: #00cc88;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(0, 229, 153, 0.4);
 }
 
-/* Ghost Button (Outline) */
-.btn-ghost {
-  background: transparent; border: 1px solid var(--glass-border); color: white;
-}
-.btn-ghost:hover {
-  border-color: var(--primary); color: var(--primary); background: var(--primary-dim);
+.btn-secondary {
+  width: 100%;
+  padding: 16px;
+  background: transparent;
+  border: 1px solid #333;
+  color: white;
+  border-radius: 14px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
 }
 
-/* Hover Cards (Role Selection) */
-.hover-card { transition: all 0.3s ease; }
-.hover-card:hover {
-  transform: translateY(-5px); border-color: var(--primary);
-  box-shadow: 0 10px 30px rgba(0, 229, 153, 0.1);
+.btn-secondary:hover {
+  border-color: #666;
+  background: rgba(255,255,255,0.05);
 }
 
-.auth-footer { text-align: center; margin-top: 1.5rem; color: var(--text-muted); font-size: 0.9rem; }
-.link-text { color: var(--primary); font-weight: 600; cursor: pointer; transition: 0.2s; }
-.link-text:hover { text-decoration: underline; }
+/* 5. UTILS & ANIMATION */
+.divider {
+  display: flex;
+  align-items: center;
+  color: #444;
+  margin: 1.5rem 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.divider::before, .divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #333;
+}
+.divider span { padding: 0 10px; }
 
-@keyframes scaleIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.fade-in { animation: fadeIn 0.5s ease-out; }
+.link-text {
+  color: #00e599;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: none;
+  transition: 0.2s;
+}
+.link-text:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+.error-banner {
+  background: rgba(244, 63, 94, 0.1);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  color: #f43f5e;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+@keyframes slideUpFade {
+  from { opacity: 0; transform: translateY(30px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Selection Cards (Donate Now Popup) */
+.selection-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; margin-top: 1rem; }
+@media(min-width: 768px) { .selection-grid { grid-template-columns: 1fr 1fr; } }
+
+.selection-card {
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 20px;
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  position: relative;
+}
+
+.selection-card:hover {
+  border-color: #00e599;
+  transform: translateY(-8px);
+  box-shadow: 0 15px 35px -10px rgba(0, 229, 153, 0.15);
+}
+
+.selection-icon {
+  font-size: 2.5rem;
+  color: #666;
+  margin-bottom: 1rem;
+  transition: 0.3s;
+}
+.selection-card:hover .selection-icon { color: #00e599; transform: scale(1.1); }

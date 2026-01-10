@@ -1,192 +1,142 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FaBuilding, 
-  FaIdCard, 
-  FaEnvelope, 
-  FaLock, 
-  FaMapMarkerAlt, 
-  FaCheckCircle, 
-  FaArrowLeft 
-} from 'react-icons/fa';
-import './Auth.css';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore'; 
+import { db } from '../../firebase';
+import { FaBuilding, FaMapMarkerAlt, FaPhone, FaEnvelope, FaLock, FaArrowLeft, FaCheckCircle, FaSpinner } from 'react-icons/fa';
+import './Auth.css'; 
 
 const NGORegister = () => {
-  // Destructure the tools we need from AuthContext
-  const { signupWithEmail, registerUserInDB } = useAuth();
+  const { signupWithEmail } = useAuth();
   const navigate = useNavigate();
   
-  // State for form fields
-  const [formData, setFormData] = useState({ 
-    name: '', 
-    email: '', 
-    password: '', 
-    regNo: '' 
+  const [formData, setFormData] = useState({
+    name: '', email: '', phone: '', address: '', password: ''
   });
-
-  // State for UI interaction
-  const [locVerified, setLocVerified] = useState(false);
-  const [verifyingLoc, setVerifyingLoc] = useState(false);
+  const [location, setLocation] = useState(null); 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // 1. Simulate Geo-Location Lock (Required Step)
-  const handleGeoLock = () => {
-    setVerifyingLoc(true);
-    // Simulate a 1.5s delay to make it feel like "GPS Acquiring"
-    setTimeout(() => {
-        setLocVerified(true);
-        setVerifyingLoc(false);
-    }, 1500);
+  // 1. Capture GPS Location
+  const handleGetLocation = () => {
+    if (navigator.geolocation) {
+      setLoading(true);
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+          setLoading(false);
+        },
+        (err) => {
+          setError("Location access denied. Please enable GPS.");
+          setLoading(false);
+        }
+      );
+    }
   };
 
-  // 2. The Missing "handleSubmit" Function
+  // 2. Handle Registration
   const handleSubmit = async (e) => {
-    e.preventDefault(); // Stop page refresh
-    
-    // Validation Checks
-    if (!locVerified) return alert("Please verify your GPS location first!");
-    if (!formData.name || !formData.email || !formData.password || !formData.regNo) {
-      return setError("All fields are required.");
+    e.preventDefault();
+    setLoading(true); setError('');
+
+    if (!location) {
+      setError("Please verify your location to continue.");
+      setLoading(false);
+      return;
     }
 
-    setLoading(true);
-    setError('');
-
     try {
-      // Step A: Create the Account in Firebase Auth
-      const userCred = await signupWithEmail(formData.email, formData.password);
-      
-      // Step B: Save NGO specific details to Firestore Database
-      // Note: We force the role to 'institutional_receiver' here
-      await registerUserInDB(userCred.user.uid, {
+      // Create Auth User
+      const userCredential = await signupWithEmail(formData.email, formData.password);
+      const uid = userCredential.user.uid;
+
+      // Create Firestore Profile
+      await setDoc(doc(db, "users", uid), {
         name: formData.name,
         email: formData.email,
-        phoneNumber: '', // Phone can be added later if needed
-        receiverDetails: {
-          registrationId: formData.regNo,
-          verificationStatus: 'pending', // Admin must approve this later
-          geoVerified: true
-        }
-      }, 'institutional_receiver');
+        phoneNumber: formData.phone,
+        role: 'institutional_receiver', 
+        status: 'pending', 
+        location: location,
+        address: formData.address,
+        createdAt: serverTimestamp(),
+        verified: false
+      });
 
-      // Step C: Redirect to NGO Dashboard (which will show "Pending" screen)
+      // Redirect to Dashboard
       navigate('/dashboard/ngo');
-
     } catch (err) {
-      console.error("Registration Error:", err);
-      setError(err.message.replace('Firebase:', '').trim());
+      setError(err.message.replace('Firebase: ', ''));
       setLoading(false);
     }
   };
 
   return (
     <div className="auth-container">
-      <div className="auth-card">
-        
-        {/* Header */}
-        <div className="auth-header">
-           <div className="logo-text" onClick={() => navigate('/')}>RePlate<span className="dot">.</span></div>
-        </div>
+      <div className="glass-card" style={{maxWidth:'500px'}}>
+        <button onClick={() => navigate('/register')} style={{background:'none', border:'none', color:'#888', cursor:'pointer', display:'flex', alignItems:'center', gap:'5px', marginBottom:'1.5rem'}}>
+          <FaArrowLeft /> Back
+        </button>
 
-        <h2 style={{ textAlign: 'center', marginBottom: '0.5rem' }}>Partner Registration</h2>
-        <p className="auth-subtitle" style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          Join our network of trusted NGOs.
-        </p>
+        <h1 className="auth-title">Partner with RePlate</h1>
+        <p className="auth-subtitle">Register your NGO/Shelter to receive food donations.</p>
 
-        {error && <div className="text-red" style={{textAlign:'center', marginBottom:'1rem'}}>{error}</div>}
+        {error && <div className="error-banner">{error}</div>}
 
         <form onSubmit={handleSubmit}>
-          
           {/* Org Name */}
-          <div className="form-group">
-            <label>Organization Name</label>
-            <div className="input-wrapper">
-                <FaBuilding className="input-icon" />
-                <input 
-                  type="text" 
-                  className="styled-input" 
-                  placeholder="e.g. Hope Foundation"
-                  required 
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})} 
-                />
-            </div>
+          <div className="input-group">
+            <FaBuilding className="input-icon" />
+            <input type="text" className="glass-input" placeholder="Organization Name" required 
+              onChange={(e) => setFormData({...formData, name: e.target.value})} />
           </div>
 
           {/* Email */}
-          <div className="form-group">
-            <label>Official Email</label>
-            <div className="input-wrapper">
-                <FaEnvelope className="input-icon" />
-                <input 
-                  type="email" 
-                  className="styled-input" 
-                  placeholder="contact@ngo.org"
-                  required 
-                  value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})} 
-                />
-            </div>
+          <div className="input-group">
+            <FaEnvelope className="input-icon" />
+            <input type="email" className="glass-input" placeholder="Official Email" required 
+              onChange={(e) => setFormData({...formData, email: e.target.value})} />
+          </div>
+
+          {/* Phone */}
+          <div className="input-group">
+            <FaPhone className="input-icon" />
+            <input type="tel" className="glass-input" placeholder="Contact Number" required 
+              onChange={(e) => setFormData({...formData, phone: e.target.value})} />
+          </div>
+
+          {/* Location Capture Button */}
+          <div style={{marginBottom:'1.2rem'}}>
+            <button type="button" className="btn-secondary" onClick={handleGetLocation} style={{
+              borderColor: location ? '#00e599' : '#333', 
+              color: location ? '#00e599' : 'white'
+            }}>
+              {loading && !location ? <FaSpinner className="icon-spin"/> : location ? <FaCheckCircle/> : <FaMapMarkerAlt/>} 
+              {location ? " Location Verified" : " Verify GPS Location (Required)"}
+            </button>
+          </div>
+
+          {/* Address Text */}
+          <div className="input-group">
+            <FaMapMarkerAlt className="input-icon" />
+            <input type="text" className="glass-input" placeholder="Full Street Address" required 
+              onChange={(e) => setFormData({...formData, address: e.target.value})} />
           </div>
 
           {/* Password */}
-          <div className="form-group">
-            <label>Create Password</label>
-            <div className="input-wrapper">
-                <FaLock className="input-icon" />
-                <input 
-                  type="password" 
-                  className="styled-input" 
-                  placeholder="Min 6 chars"
-                  required 
-                  value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})} 
-                />
-            </div>
+          <div className="input-group">
+            <FaLock className="input-icon" />
+            <input type="password" className="glass-input" placeholder="Create Password" required 
+              onChange={(e) => setFormData({...formData, password: e.target.value})} />
           </div>
 
-          {/* Reg ID */}
-          <div className="form-group">
-            <label>Govt Registration ID (Darpan/Trust)</label>
-            <div className="input-wrapper">
-                <FaIdCard className="input-icon" />
-                <input 
-                  type="text" 
-                  className="styled-input" 
-                  placeholder="e.g. AAAT1234F"
-                  required 
-                  value={formData.regNo}
-                  onChange={(e) => setFormData({...formData, regNo: e.target.value})} 
-                />
-            </div>
-          </div>
-
-          {/* Location Verification Button */}
-          <button 
-            type="button" 
-            className={`auth-btn btn-ghost ${locVerified ? 'active-success' : ''}`} 
-            onClick={handleGeoLock} 
-            disabled={locVerified || verifyingLoc}
-            style={{ marginBottom: '1.5rem', borderColor: locVerified ? '#00e599' : 'rgba(255,255,255,0.2)' }}
-          >
-            {verifyingLoc ? "Acquiring Signal..." : locVerified ? <><FaCheckCircle /> Location Verified</> : <><FaMapMarkerAlt /> Verify GPS Location</>}
+          <button className="btn-primary" disabled={loading || !location}>
+            {loading ? 'Registering...' : 'Register Organization'}
           </button>
-
-          {/* Submit Button */}
-          <button type="submit" className="auth-btn btn-primary" disabled={loading || !locVerified}>
-            {loading ? 'Submitting Application...' : 'Register Organization'}
-          </button>
-
         </form>
-
-        <p className="auth-footer" style={{marginTop:'1.5rem'}}>
-           <span className="link-text" onClick={() => navigate('/register')}>
-             <FaArrowLeft style={{marginRight:'5px'}}/> Back
-           </span>
-        </p>
-
       </div>
     </div>
   );
