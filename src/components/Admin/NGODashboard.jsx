@@ -5,7 +5,7 @@ import { db } from '../../firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, orderBy } from 'firebase/firestore';
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { FaBoxOpen, FaTruck, FaMapMarkerAlt, FaPaperPlane, FaUserCircle, FaSignOutAlt, FaExclamationTriangle, FaHistory, FaGlobe } from 'react-icons/fa';
+import { FaBoxOpen, FaTruck, FaMapMarkerAlt, FaPaperPlane, FaUserCircle, FaSignOutAlt, FaExclamationTriangle, FaHistory, FaGlobe, FaLock } from 'react-icons/fa';
 import '../Dashboard/Dashboard.css'; 
 
 const NGODashboard = () => {
@@ -24,7 +24,23 @@ const NGODashboard = () => {
   const [inputMsg, setInputMsg] = useState("");
   const scrollRef = useRef();
 
-  // 1. Get Exact NGO Location
+  // --- SECURITY CHECK ---
+  if (dbUser?.status !== 'active') {
+    return (
+      <div className="dashboard-layout" style={{justifyContent:'center', alignItems:'center', textAlign:'center'}}>
+        <div className="glass-panel" style={{maxWidth:'400px', padding:'3rem'}}>
+          <FaLock size={50} color="#ff4444" style={{marginBottom:'1rem'}}/>
+          <h2 style={{marginTop:0}}>Access Restricted</h2>
+          <p style={{color:'#ccc', marginBottom:'2rem'}}>
+            {dbUser?.status === 'pending' ? "Your account is awaiting Admin approval." : "Your account has been suspended."}
+          </p>
+          <button className="btn-primary" onClick={() => logout()}>Logout</button>
+        </div>
+      </div>
+    );
+  }
+
+  // 1. Get Location
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -34,18 +50,53 @@ const NGODashboard = () => {
     }
   }, []);
 
-  // 2. Fetch Requests (Exact Data Only)
+  // 2. Fetch Requests (FILTERED FOR THIS NGO ONLY)
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, "donations"), where("status", "in", ["pending", "accepted", "picked_up", "completed", "cancelled"]), orderBy("createdAt", "desc"));
-    return onSnapshot(q, (snap) => {
-      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const q = query(
+      collection(db, "donations"), 
+      where("status", "in", ["pending", "accepted", "picked_up", "completed", "cancelled"]), 
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const allDocs = snap.docs.map(d => {
+        const data = d.data();
+        // Location Logic: Use real lat/lng or fallback near NGO for UI
+        const baseLat = ngoLocation ? ngoLocation.lat : 19.0760;
+        const baseLng = ngoLocation ? ngoLocation.lng : 72.8777;
+        return { 
+          id: d.id, 
+          ...data,
+          lat: data.lat || (baseLat + (Math.random() - 0.5) * 0.02),
+          lng: data.lng || (baseLng + (Math.random() - 0.5) * 0.02)
+        };
+      });
+
+      // --- CRITICAL FIX: FILTERING LOGIC ---
       
-      setRequests(all.filter(d => d.status === 'pending'));
-      setActiveOrders(all.filter(d => ['accepted', 'picked_up'].includes(d.status)));
-      setHistoryOrders(all.filter(d => ['completed', 'cancelled'].includes(d.status)));
+      // 1. Pending Requests: Show Broadcasts (null target) OR Direct Donations to ME
+      setRequests(allDocs.filter(d => 
+        d.status === 'pending' && 
+        (!d.targetNgoId || d.targetNgoId === user.uid)
+      ));
+
+      // 2. Active Orders: Show only orders ACCEPTED BY ME
+      setActiveOrders(allDocs.filter(d => 
+        ['accepted', 'picked_up'].includes(d.status) && 
+        d.ngoId === user.uid
+      ));
+
+      // 3. History: Show only orders COMPLETED BY ME
+      setHistoryOrders(allDocs.filter(d => 
+        ['completed', 'cancelled'].includes(d.status) && 
+        d.ngoId === user.uid
+      ));
     });
-  }, [user]);
+
+    return () => unsubscribe();
+  }, [user, ngoLocation]);
 
   // 3. Chat Sync
   useEffect(() => {
@@ -58,12 +109,14 @@ const NGODashboard = () => {
   }, [selectedOrder]);
 
   const handleAccept = async (order) => {
-    await updateDoc(doc(db, "donations", order.id), { status: 'accepted', ngoId: user.uid, ngoName: dbUser?.name });
-    await addDoc(collection(db, `donations/${order.id}/messages`), { 
-      text: "⚠ SYSTEM: Please verify donor phone before pickup.", sender: "system", isSystem: true, timestamp: serverTimestamp() 
-    });
-    setSelectedOrder({ ...order, status: 'accepted' });
-    setRightView('chat');
+    try {
+      await updateDoc(doc(db, "donations", order.id), { status: 'accepted', ngoId: user.uid, ngoName: dbUser?.name });
+      await addDoc(collection(db, `donations/${order.id}/messages`), { 
+        text: "⚠ SYSTEM: Please verify donor phone before pickup.", sender: "system", isSystem: true, timestamp: serverTimestamp() 
+      });
+      setSelectedOrder({ ...order, status: 'accepted' });
+      setRightView('chat');
+    } catch (err) { alert("Error accepting order."); }
   };
 
   const handleUpdateStatus = async (id, status) => {
@@ -105,9 +158,9 @@ const NGODashboard = () => {
                     {/* HQ Marker */}
                     <CircleMarker center={[ngoLocation.lat, ngoLocation.lng]} radius={8} pathOptions={{ color: '#00e599', fillColor: '#00e599', fillOpacity: 0.8 }}><Popup>HQ</Popup></CircleMarker>
                     
-                    {/* Requests (ONLY RENDER IF GPS DATA EXISTS) */}
+                    {/* Requests (Filtered) */}
                     {requests.map(req => {
-                      if (!req.lat || !req.lng) return null; // Accurate Check
+                      if (!req.lat || !req.lng || isNaN(req.lat)) return null; 
                       return (
                         <CircleMarker key={req.id} center={[req.lat, req.lng]} radius={6} pathOptions={{ color: '#FFB300', fillColor: '#FFB300', fillOpacity: 0.9 }}>
                           <Popup><strong>{req.foodItem}</strong><br/>{req.quantity}</Popup>
@@ -118,6 +171,7 @@ const NGODashboard = () => {
                 )}
               </div>
               <h3 style={{color:'white', margin:0}}><FaBoxOpen/> Pending Requests ({requests.length})</h3>
+              {requests.length === 0 && <p style={{color:'#666', fontStyle:'italic'}}>No pending requests nearby.</p>}
               {requests.map(req => (
                 <div key={req.id} className="glass-panel">
                   <h4 style={{margin:'0 0 5px 0'}}>{req.foodItem} <span style={{fontSize:'0.8rem', color:'#888'}}>({req.quantity})</span></h4>
@@ -129,6 +183,7 @@ const NGODashboard = () => {
           ) : (
             <>
               <h3 style={{color:'white', margin:0}}><FaHistory/> Order History</h3>
+              {historyOrders.length === 0 && <p style={{color:'#666', fontStyle:'italic'}}>No completed history yet.</p>}
               {historyOrders.map(order => (
                 <div key={order.id} className="glass-panel" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                    <div><h4>{order.foodItem} ({order.quantity})</h4><p style={{color:'#888', margin:0}}>{order.donorName}</p></div>
@@ -143,6 +198,7 @@ const NGODashboard = () => {
           {rightView === 'list' && (
             <div style={{padding:'1.5rem', flex:1, overflowY:'auto'}}>
               <h3 style={{color:'white', marginTop:0}}><FaTruck/> Active Operations ({activeOrders.length})</h3>
+              {activeOrders.length === 0 && <p style={{color:'#666', fontStyle:'italic'}}>No active pickups.</p>}
               {activeOrders.map(order => (
                 <div key={order.id} className="glass-panel" onClick={() => { setSelectedOrder(order); setRightView('chat'); }} style={{marginBottom:'1rem', cursor:'pointer', borderLeft:'3px solid #00e599'}}>
                   <div style={{display:'flex', justifyContent:'space-between'}}><h4>{order.foodItem}</h4><span className={`status-pill ${order.status}`}>{order.status.replace('_',' ')}</span></div>
